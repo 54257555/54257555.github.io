@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Android设置快捷助手</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{primary:'#3b82f6'}}}}
+</script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif}
+.card{background:rgba(255,255,255,0.8);backdrop-filter:blur(8px);border:1px solid rgba(220,220,220,0.5);border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
+.btn{background:#3b82f6;color:white;padding:12px;border-radius:10px;border:none;font-size:16px;width:100%;cursor:pointer}
+.btn:hover{background:#2563eb}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.input-wrap{position:relative}
+.input{width:100%;padding:12px 12px 12px 40px;border:1px solid #ddd;border-radius:10px;font-size:16px}
+.input.error{border:#ef4444 1px solid}
+.icon-lock{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#666}
+.grid-wrap{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;padding:10px}
+@media(min-width:640px){.grid-wrap{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:768px){.grid-wrap{grid-template-columns:repeat(4,1fr)}}
+.item{border:1px solid rgba(220,220,220,0.4);background:rgba(255,255,255,0.6);border-radius:12px;padding:16px;display:flex;flex-direction:column;align-items:center;text-decoration:none;color:#111;transition:all .3s}
+.item:hover{background:#fff;border-color:rgba(59,130,246,0.3);transform:translateY(-4px);box-shadow:0 8px 20px rgba(59,130,246,0.08)}
+.item-icon{width:40px;height:40px;border-radius:8px;background:rgba(59,130,246,0.1);display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.item-name{font-size:14px;text-align:center}
+.page{display:none;min-height:100vh;padding:16px}
+.verify-page{display:flex;align-items:center;justify-content:center}
+.error-tip{color:#ef4444;font-size:14px;margin-top:8px;display:none}
+.logout-btn{border:none;background:transparent;color:#666;padding:8px 12px;border-radius:8px;cursor:pointer;margin:10px 0}
+.logout-btn:hover{background:#f1f5f9}
+
+/* 弹窗样式 */
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:100;}
+.modal.active{display:flex;}
+.modal-close{position:absolute;top:12px;right:12px;background:none;border:none;font-size:24px;cursor:pointer;color:#666;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;}
+.modal-close:hover{background:#f3f4f6;}
+.modal-close:disabled{opacity:0.3;cursor:not-allowed;}
+.get-code-link{color:#3b82f6;font-size:14px;text-decoration:none;}
+.get-code-link:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<!-- 验证页面 -->
+<div id="verifyPage" class="page verify-page">
+<div class="w-full max-w-sm px-4">
+<div class="card p-6">
+<div style="text-align:center;margin-bottom:24px">
+<div style="width:64px;height:64px;border-radius:16px;background:rgba(59,130,246,0.1);margin:0 auto;display:flex;align-items:center;justify-content:center">
+<svg width="32" height="32" fill="none" stroke="#3b82f6" stroke-width="2" viewBox="0 0 24 24">
+<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+</svg>
+</div>
+<h2 style="font-size:24px;font-weight:bold;margin:12px 0 6px">卡密验证</h2>
+<p style="color:#666;font-size:14px">请输入卡密以访问 Android 系统设置快捷跳转工具</p>
+</div>
+<form id="verifyForm">
+<div class="input-wrap">
+<svg class="icon-lock" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+<path d="M5 12h14M12 15V9M8 12V9a4 4 0 118 0v3"></path>
+</svg>
+<input type="text" id="pwd" class="input" placeholder="请输入卡密" autocomplete="off">
+</div>
+<div style="text-align:right;margin-top:8px;">
+  <a href="javascript:void(0)" onclick="openModal()" class="get-code-link">获取卡密 &gt;</a>
+</div>
+<div id="errorTip" class="error-tip">卡密错误，请重新输入</div>
+<button type="submit" class="btn" style="margin-top:16px">确认验证</button>
+</form>
+</div>
+<p style="text-align:center;font-size:12px;color:#666;margin-top:24px">验证状态当日有效，次日需重新获取卡密</p>
+</div>
+</div>
+
+<!-- 获取卡密弹窗 -->
+<div id="codeModal" class="modal" onclick="if(event.target===this && !isLocked()) closeModal()">
+  <div class="card p-6" style="max-width:400px;width:90%;position:relative;">
+    <button id="modalCloseBtn" class="modal-close" onclick="if(!isLocked()) closeModal()">&times;</button>
+    <h3 style="font-size:18px;font-weight:bold;margin-bottom:16px;">回答问题获取卡密</h3>
+    <div id="questionSection">
+      <p style="margin-bottom:12px;color:#333;font-size:15px;">频道主的QQ昵称是什么？</p>
+      <input type="text" id="answerInput" class="input" placeholder="请输入答案" style="margin-bottom:12px;padding-left:12px;">
+      <div id="lockTip" style="color:#ef4444;font-size:14px;margin-bottom:12px;display:none;"></div>
+      <button type="button" onclick="submitAnswer()" class="btn" id="submitAnswerBtn">提交答案</button>
+    </div>
+    <div id="codeSection" style="display:none;text-align:center;">
+      <p style="color:#666;font-size:14px;margin-bottom:8px;">您的卡密（当日有效，一次性）：</p>
+      <div style="font-size:22px;font-weight:bold;color:#3b82f6;margin-bottom:16px;letter-spacing:2px;font-family:monospace;" id="generatedCode"></div>
+      <button type="button" onclick="copyCode()" class="btn" style="background:#10b981;">
+        <span id="copyText">复制卡密</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 主页 -->
+<div id="homePage" class="page">
+<div style="max-width:1200px;margin:0 auto;padding:30px 16px">
+<div style="text-align:center;margin-bottom:32px">
+<div style="width:56px;height:56px;border-radius:16px;background:rgba(59,130,246,0.1);margin:0 auto;display:flex;align-items:center;justify-content:center">
+<svg width="28" height="28" stroke="#3b82f6" stroke-width="2" fill="none" viewBox="0 0 24 24">
+<rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12" y2="18"></line>
+</svg>
+</div>
+<h1 style="font-size:26px;font-weight:bold;margin:10px 0">Android 系统设置快捷跳转</h1>
+<p style="color:#666;max-width:500px;margin:0 auto">一键直达系统深层设置页面，省去逐层查找的麻烦</p>
+<button id="logoutBtn" class="logout-btn">退出验证</button>
+</div>
+
+<div class="grid-wrap" id="gridBox">
+<!-- 快捷项由js生成 -->
+</div>
+
+<div style="text-align:center;margin-top:40px;padding:12px;background:#f3f4f6;border-radius:999px;display:inline-block;left:50%;position:relative;transform:translateX(-50%);font-size:13px;color:#555;padding:8px 16px">
+在 Android 设备上点击即可跳转对应设置
+</div>
+</div>
+</div>
+
+<script>
+const STORAGE_KEY = "android_shortcut_verified";
+const CODE_STORAGE_KEY = "android_shortcut_daily_code";
+const CODE_DATE_KEY = "android_shortcut_code_date";
+const VERIFY_DATE_KEY = "android_shortcut_verify_date";
+const LOCK_TIME_KEY = "android_shortcut_lock_time";
+const CORRECT_ANSWER = "甜菜";
+
+const verifyPage = document.getElementById("verifyPage");
+const homePage = document.getElementById("homePage");
+const form = document.getElementById("verifyForm");
+const pwdInput = document.getElementById("pwd");
+const errorTip = document.getElementById("errorTip");
+const logoutBtn = document.getElementById("logoutBtn");
+const gridBox = document.getElementById("gridBox");
+
+//快捷数据
+const list=[
+{id:"1",name:"开发者选项",intent:"intent:#Intent;component=com.android.settings/.SubSettings;S.%3Asettings%3Ashow_fragment=com.android.settings.development.DevelopmentSettingsDashboardFragment;end"},
+{id:"2",name:"关于手机",intent:"intent:#Intent;component=com.android.settings/.Settings$MyDeviceInfoActivity;end"},
+{id:"3",name:"无障碍设置",intent:"intent:#Intent;component=com.android.settings/.Settings$AccessibilitySettingsActivity;end"},
+{id:"4",name:"安全设置",intent:"intent:#Intent;component=com.android.settings/.Settings$SecurityDashboardActivity;end"},
+{id:"5",name:"设备管理器",intent:"intent:#Intent;component=com.android.settings/.Settings$DeviceAdminSettingsActivity;end"},
+{id:"6",name:"VPN设置",intent:"intent:#Intent;component=com.android.settings/.Settings$VpnSettingsActivity;end"},
+{id:"7",name:"APN设置",intent:"intent:#Intent;component=com.android.settings/.Settings$ApnSettingsActivity;end"},
+{id:"8",name:"蓝牙设置",intent:"intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end"},
+{id:"9",name:"WIFI设置",intent:"intent:#Intent;action=android.settings.WIFI_SETTINGS;end"},
+{id:"10",name:"省电模式",intent:"intent:#Intent;action=android.settings.BATTERY_SAVER_SETTINGS;end"},
+{id:"11",name:"应用管理",intent:"intent:#Intent;component=com.android.settings/.Settings$ManageApplicationsActivity;end"},
+{id:"12",name:"显示设置",intent:"intent:#Intent;component=com.android.settings/.Settings$DisplaySettingsActivity;end"},
+{id:"13",name:"免打扰设置",intent:"intent:#Intent;component=com.android.settings/.Settings$ZenModeSettingsActivity;end"},
+{id:"14",name:"声音设置",intent:"intent:#Intent;action=android.settings.SOUND_SETTINGS;end"},
+{id:"15",name:"存储设置",intent:"intent:#Intent;action=android.settings.INTERNAL_STORAGE_SETTINGS;end"},
+{id:"16",name:"位置信息",intent:"intent:#Intent;action=android.settings.LOCATION_SOURCE_SETTINGS;end"},
+{id:"17",name:"添加账户",intent:"intent:#Intent;action=android.settings.ADD_ACCOUNT_SETTINGS;end"},
+{id:"18",name:"系统设置",intent:"intent:#Intent;component=com.android.settings/.Settings$SystemDashboardActivity;end"}
+];
+
+function getTodayStr() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
+function generateCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 12; i++) {
+    if (i > 0 && i % 4 === 0) code += '-';
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function isLocked() {
+  const lockTime = localStorage.getItem(LOCK_TIME_KEY);
+  if (!lockTime) return false;
+  return Date.now() < parseInt(lockTime);
+}
+
+function getLockRemaining() {
+  const lockTime = localStorage.getItem(LOCK_TIME_KEY);
+  if (!lockTime) return 0;
+  const rem = parseInt(lockTime) - Date.now();
+  return rem > 0 ? rem : 0;
+}
+
+//页面初始化
+function init(){
+  const today = getTodayStr();
+  const lastVerifyDate = localStorage.getItem(VERIFY_DATE_KEY);
+  
+  // 跨天自动清除验证状态和卡密
+  if (lastVerifyDate !== today) {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(CODE_STORAGE_KEY);
+    localStorage.removeItem(CODE_DATE_KEY);
+    localStorage.removeItem(VERIFY_DATE_KEY);
+  }
+  
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if(saved === "true"){
+    verifyPage.style.display = "none";
+    homePage.style.display = "block";
+    renderItems();
+  } else {
+    verifyPage.style.display = "flex";
+    homePage.style.display = "none";
+  }
+}
+
+//渲染所有快捷按钮
+function renderItems(){
+  gridBox.innerHTML = "";
+  list.forEach(item => {
+    const a = document.createElement("a");
+    a.className = "item";
+    a.href = item.intent;
+    a.innerHTML = `
+<div class="item-icon">
+<svg width="24" height="24" stroke="#3b82f6" stroke-width="2" fill="none" viewBox="0 0 24 24">
+<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"></path>
+</svg>
+</div>
+<span class="item-name">${item.name}</span>
+`;
+    gridBox.appendChild(a);
+  });
+}
+
+/* ========== 弹窗相关 ========== */
+let countdownInterval;
+
+function openModal() {
+  const modal = document.getElementById('codeModal');
+  modal.classList.add('active');
+  document.getElementById('questionSection').style.display = 'block';
+  document.getElementById('codeSection').style.display = 'none';
+  document.getElementById('answerInput').value = '';
+  document.getElementById('lockTip').style.display = 'none';
+  document.getElementById('copyText').textContent = '复制卡密';
+  
+  if (isLocked()) {
+    startLockCountdown();
+  } else {
+    const input = document.getElementById('answerInput');
+    const btn = document.getElementById('submitAnswerBtn');
+    const closeBtn = document.getElementById('modalCloseBtn');
+    input.disabled = false;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    closeBtn.disabled = false;
+    closeBtn.style.opacity = '1';
+    closeBtn.style.cursor = 'pointer';
+  }
+}
+
+function closeModal() {
+  document.getElementById('codeModal').classList.remove('active');
+  if (countdownInterval) clearInterval(countdownInterval);
+  // 自动填入已生成的卡密
+  const code = localStorage.getItem(CODE_STORAGE_KEY);
+  const date = localStorage.getItem(CODE_DATE_KEY);
+  if (code && date === getTodayStr()) {
+    document.getElementById('pwd').value = code;
+  }
+}
+
+function submitAnswer() {
+  const input = document.getElementById('answerInput');
+  const val = input.value.trim();
+  
+  if (isLocked()) {
+    startLockCountdown();
+    return;
+  }
+  
+  if (val === CORRECT_ANSWER) {
+    const code = generateCode();
+    const today = getTodayStr();
+    localStorage.setItem(CODE_STORAGE_KEY, code);
+    localStorage.setItem(CODE_DATE_KEY, today);
+    
+    document.getElementById('generatedCode').textContent = code;
+    document.getElementById('questionSection').style.display = 'none';
+    document.getElementById('codeSection').style.display = 'block';
+  } else {
+    const lockUntil = Date.now() + 5 * 60 * 1000; // 5分钟后
+    localStorage.setItem(LOCK_TIME_KEY, lockUntil);
+    startLockCountdown();
+  }
+}
+
+function startLockCountdown() {
+  const lockTip = document.getElementById('lockTip');
+  const input = document.getElementById('answerInput');
+  const btn = document.getElementById('submitAnswerBtn');
+  const closeBtn = document.getElementById('modalCloseBtn');
+  
+  input.disabled = true;
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  closeBtn.disabled = true;
+  closeBtn.style.opacity = '0.3';
+  closeBtn.style.cursor = 'not-allowed';
+  
+  if (countdownInterval) clearInterval(countdownInterval);
+  
+  function update() {
+    const rem = getLockRemaining();
+    if (rem <= 0) {
+      clearInterval(countdownInterval);
+      lockTip.style.display = 'none';
+      input.disabled = false;
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      closeBtn.disabled = false;
+      closeBtn.style.opacity = '1';
+      closeBtn.style.cursor = 'pointer';
+      input.value = '';
+      input.placeholder = '请输入答案';
+      return;
+    }
+    
+    const mins = Math.floor(rem / 60000);
+    const secs = Math.floor((rem % 60000) / 1000);
+    lockTip.textContent = `请五分钟后尝试 (${mins}:${secs.toString().padStart(2, '0')})`;
+    lockTip.style.display = 'block';
+  }
+  
+  update();
+  countdownInterval = setInterval(update, 1000);
+}
+
+function copyCode() {
+  const code = document.getElementById('generatedCode').textContent;
+  
+  function finishCopy() {
+    document.getElementById('copyText').textContent = '已复制';
+    setTimeout(() => {
+      closeModal();
+    }, 300);
+  }
+  
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(finishCopy).catch(() => fallbackCopy(code, finishCopy));
+  } else {
+    fallbackCopy(code, finishCopy);
+  }
+}
+
+function fallbackCopy(text, callback) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  if (callback) callback();
+}
+
+// 按ESC关闭弹窗（非锁定状态下）
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('codeModal');
+    if (modal.classList.contains('active') && !isLocked()) {
+      closeModal();
+    }
+  }
+});
+
+/* ========== 表单提交验证 ========== */
+form.addEventListener("submit", function(e){
+  e.preventDefault();
+  const val = pwdInput.value.trim();
+  errorTip.style.display = "none";
+  
+  const savedCode = localStorage.getItem(CODE_STORAGE_KEY);
+  const savedDate = localStorage.getItem(CODE_DATE_KEY);
+  const today = getTodayStr();
+  
+  if (savedCode && savedDate === today && val === savedCode) {
+    localStorage.setItem(STORAGE_KEY, "true");
+    localStorage.setItem(VERIFY_DATE_KEY, today);
+    // 卡密一次性使用，立即清除
+    localStorage.removeItem(CODE_STORAGE_KEY);
+    localStorage.removeItem(CODE_DATE_KEY);
+    init();
+  } else {
+    errorTip.textContent = "卡密错误、已过期或已被使用，请重新获取";
+    errorTip.style.display = "block";
+    pwdInput.classList.add("error");
+    setTimeout(() => pwdInput.classList.remove("error"), 500);
+  }
+});
+
+//退出登录
+logoutBtn.addEventListener("click", function(){
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(VERIFY_DATE_KEY);
+  localStorage.removeItem(CODE_STORAGE_KEY);
+  localStorage.removeItem(CODE_DATE_KEY);
+  localStorage.removeItem(LOCK_TIME_KEY);
+  if (countdownInterval) clearInterval(countdownInterval);
+  init();
+});
+
+window.onload = init;
+</script>
+</body>
+  </html>
